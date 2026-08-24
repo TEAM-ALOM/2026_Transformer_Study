@@ -1,2 +1,2 @@
 # 2026_Transformer_Study
-AI-DL 스터디입니다.
+AI-DL 스터디 자료  
