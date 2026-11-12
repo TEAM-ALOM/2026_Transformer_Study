@@ -1,9 +1,9 @@
 """
-012 노트북에서 학습해 저장한 chatbot_transformer.pt 체크포인트를 불러와
+012 / 013 노트북에서 학습해 저장한 체크포인트를 불러와
 Streamlit 채팅 UI로 실시간 대화하는 간단한 Agent.
 
 실행: streamlit run final.py
-(이 파일과 같은 폴더에 chatbot_transformer.pt가 있어야 한다)
+(이 파일과 같은 폴더에 chatbot_transformer.pt, chatbot_transformer_013.pt가 있어야 한다)
 
 모델 클래스는 012 노트북의 것과 동일하게 이 파일 안에 직접 담았다 (모듈로 분리하지 않음).
 체크포인트(state_dict)를 불러오려면 클래스 구조가 정확히 같아야 하므로,
@@ -17,7 +17,10 @@ import streamlit as st
 import torch
 import torch.nn as nn
 
-CHECKPOINT_PATH = "chatbot_transformer.pt"
+CHECKPOINTS = {
+    "012": ("chatbot_transformer.pt", "012. final.ipynb"),
+    "013": ("chatbot_transformer_013.pt", "013. final_regularized.ipynb"),
+}
 
 
 # ============================================================
@@ -268,9 +271,9 @@ st.caption("00~05주차에서 만든 Transformer를 직접 학습시킨 모델 +
 
 
 @st.cache_resource
-def load_model():
+def load_model(path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(CHECKPOINT_PATH, map_location=device)
+    checkpoint = torch.load(path, map_location=device)
 
     model = ChatbotTransformer(
         vocab_size=len(checkpoint["stoi"]),
@@ -284,14 +287,22 @@ def load_model():
     return model, checkpoint["stoi"], checkpoint["itos"], device
 
 
-try:
-    model, stoi, itos, device = load_model()
-except FileNotFoundError:
-    st.error(
-        f"체크포인트 파일을 찾을 수 없습니다: `{CHECKPOINT_PATH}`\n\n"
-        "먼저 `012. final.ipynb` 노트북을 끝까지 실행해서 모델을 학습시키고 저장하세요."
-    )
+models = {}
+for name, (path, notebook) in CHECKPOINTS.items():
+    try:
+        models[name] = load_model(path)
+    except FileNotFoundError:
+        st.sidebar.warning(f"`{path}` 없음 → `{notebook}` 실행 후 저장하세요.")
+
+if not models:
+    st.error("체크포인트 파일을 찾을 수 없습니다. 012 또는 013 노트북을 끝까지 실행해서 모델을 저장하세요.")
     st.stop()
+
+options = list(models)
+if len(models) == 2:
+    options.append("012 vs 013")
+mode = st.sidebar.radio("모델 선택", options, index=len(options) - 1)
+selected = ["012", "013"] if mode == "012 vs 013" else [mode]
 
 
 # ============================================================
@@ -315,7 +326,12 @@ def agent_reply(user_input):
     if "날짜" in user_input or "며칠" in user_input or "요일" in user_input:
         return f"오늘은 {get_current_date()}입니다."
 
-    return generate_reply(model, user_input, stoi, itos, device=device)
+    replies = []
+    for name in selected:
+        model, stoi, itos, device = models[name]
+        reply = generate_reply(model, user_input, stoi, itos, device=device)
+        replies.append(f"**[{name}]** {reply}" if len(selected) > 1 else reply)
+    return "\n\n".join(replies)
 
 
 # ============================================================
